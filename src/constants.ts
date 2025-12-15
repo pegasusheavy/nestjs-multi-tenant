@@ -1,0 +1,20 @@
+/**
+ * Injection token for MultiTenant module options
+ */
+export const MULTI_TENANT_OPTIONS = 'MULTI_TENANT_OPTIONS';
+
+/**
+ * Default header name for tenant ID extraction
+ */
+export const DEFAULT_TENANT_HEADER = 'x-tenant-id';
+
+/**
+ * Default query parameter name for tenant ID extraction
+ */
+export const DEFAULT_TENANT_QUERY_PARAM = 'tenantId';
+
+/**
+ * Default path segment index for tenant ID extraction
+ */
+export const DEFAULT_TENANT_PATH_INDEX = 0;
+

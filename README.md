@@ -1,0 +1,484 @@
+# @pegasusheavy/nestjs-multi-tenant
+
+A flexible NestJS module for building multi-tenant applications. Supports multiple tenant identification strategies and provides seamless tenant context management throughout your application.
+
+## Features
+
+- 🔌 **Multiple extraction strategies** - Header, subdomain, path, query parameter, or custom
+- 🧵 **AsyncLocalStorage context** - Access tenant info anywhere without prop drilling
+- 🔒 **Guards & decorators** - Declarative tenant requirements
+- ⚡ **Async configuration** - Load config from external sources
+- 🎯 **Route exclusions** - Skip tenant extraction for specific routes
+- 📦 **Zero dependencies** - Only requires NestJS peer dependencies
+
+## Installation
+
+```bash
+# npm
+npm install @pegasusheavy/nestjs-multi-tenant
+
+# yarn
+yarn add @pegasusheavy/nestjs-multi-tenant
+
+# pnpm
+pnpm add @pegasusheavy/nestjs-multi-tenant
+```
+
+### Peer Dependencies
+
+This package requires the following peer dependencies:
+
+```json
+{
+  "@nestjs/common": "^10.0.0 || ^11.0.0",
+  "@nestjs/core": "^10.0.0 || ^11.0.0",
+  "reflect-metadata": "^0.1.13 || ^0.2.0",
+  "rxjs": "^7.0.0"
+}
+```
+
+## Quick Start
+
+### 1. Import the module
+
+```typescript
+import { Module } from '@nestjs/common';
+import { MultiTenantModule } from '@pegasusheavy/nestjs-multi-tenant';
+
+@Module({
+  imports: [
+    MultiTenantModule.forRoot({
+      extractionStrategy: 'header',
+      tenantHeader: 'x-tenant-id',
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### 2. Use in your controllers
+
+```typescript
+import { Controller, Get } from '@nestjs/common';
+import { CurrentTenant, TenantId, Tenant } from '@pegasusheavy/nestjs-multi-tenant';
+
+@Controller('users')
+export class UsersController {
+  @Get()
+  findAll(@CurrentTenant() tenant: Tenant) {
+    console.log(`Fetching users for tenant: ${tenant.id}`);
+    return this.usersService.findAll(tenant.id);
+  }
+
+  @Get('profile')
+  getProfile(@TenantId() tenantId: string) {
+    return this.usersService.getProfile(tenantId);
+  }
+}
+```
+
+### 3. Access tenant anywhere with TenantContextService
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { TenantContextService } from '@pegasusheavy/nestjs-multi-tenant';
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly tenantContext: TenantContextService) {}
+
+  findAll() {
+    const tenantId = this.tenantContext.getTenantId();
+    // Use tenantId for database queries, etc.
+  }
+}
+```
+
+## Configuration Options
+
+### Basic Configuration
+
+```typescript
+MultiTenantModule.forRoot({
+  // Extraction strategy (default: 'header')
+  extractionStrategy: 'header' | 'subdomain' | 'path' | 'query' | 'custom',
+
+  // Header name for 'header' strategy (default: 'x-tenant-id')
+  tenantHeader: 'x-tenant-id',
+
+  // Query param for 'query' strategy (default: 'tenantId')
+  tenantQueryParam: 'tenantId',
+
+  // Path segment index for 'path' strategy (default: 0)
+  tenantPathIndex: 0,
+
+  // Custom extractor function for 'custom' strategy
+  customExtractor: (request) => request.headers['x-custom-header'],
+
+  // Resolve full tenant data from ID
+  tenantResolver: async (tenantId) => {
+    return { id: tenantId, name: 'Tenant Name', plan: 'premium' };
+  },
+
+  // Throw error if tenant cannot be determined (default: false)
+  requireTenant: false,
+
+  // Routes to exclude from tenant extraction
+  excludeRoutes: ['/health', '/api/public', /^\/docs/],
+})
+```
+
+### Async Configuration
+
+```typescript
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
+@Module({
+  imports: [
+    MultiTenantModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        extractionStrategy: config.get('TENANT_STRATEGY'),
+        tenantHeader: config.get('TENANT_HEADER'),
+        requireTenant: config.get('REQUIRE_TENANT'),
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+## Extraction Strategies
+
+### Header Strategy (Default)
+
+Extract tenant ID from a request header.
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'header',
+  tenantHeader: 'x-tenant-id', // default
+})
+```
+
+```bash
+curl -H "x-tenant-id: tenant-123" http://localhost:3000/api/users
+```
+
+### Subdomain Strategy
+
+Extract tenant ID from the subdomain.
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'subdomain',
+})
+```
+
+```
+tenant-123.example.com → tenant ID: "tenant-123"
+```
+
+### Path Strategy
+
+Extract tenant ID from a URL path segment.
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'path',
+  tenantPathIndex: 0, // First path segment after /
+})
+```
+
+```
+/tenant-123/api/users → tenant ID: "tenant-123"
+/api/tenant-123/users → tenant ID: "tenant-123" (with tenantPathIndex: 1)
+```
+
+### Query Strategy
+
+Extract tenant ID from a query parameter.
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'query',
+  tenantQueryParam: 'tenantId', // default
+})
+```
+
+```
+/api/users?tenantId=tenant-123 → tenant ID: "tenant-123"
+```
+
+### Custom Strategy
+
+Implement your own extraction logic.
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'custom',
+  customExtractor: async (request) => {
+    // Extract from JWT token
+    const token = request.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      const decoded = jwt.decode(token);
+      return decoded?.tenantId || null;
+    }
+    return null;
+  },
+})
+```
+
+## Tenant Resolution
+
+Enrich tenant data by providing a resolver function:
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'header',
+  tenantResolver: async (tenantId: string) => {
+    // Fetch from database
+    const tenant = await this.tenantsRepository.findOne(tenantId);
+    if (!tenant) return null;
+
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      plan: tenant.subscriptionPlan,
+      settings: tenant.settings,
+    };
+  },
+})
+```
+
+## Decorators
+
+### @CurrentTenant()
+
+Inject the full tenant object into a controller method.
+
+```typescript
+@Get()
+findAll(@CurrentTenant() tenant: Tenant) {
+  // tenant: { id: 'tenant-123', name: 'Acme Corp', ... }
+}
+```
+
+### @TenantId()
+
+Inject only the tenant ID.
+
+```typescript
+@Get()
+findAll(@TenantId() tenantId: string) {
+  // tenantId: 'tenant-123'
+}
+```
+
+### @RequireTenant()
+
+Mark a controller or method as requiring a valid tenant context. Use with `TenantGuard`.
+
+```typescript
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { RequireTenant, TenantGuard } from '@pegasusheavy/nestjs-multi-tenant';
+
+// Apply to entire controller
+@Controller('users')
+@UseGuards(TenantGuard)
+@RequireTenant()
+export class UsersController {
+  @Get()
+  findAll() {
+    // Guaranteed to have tenant context
+  }
+}
+
+// Or apply to specific methods
+@Controller('mixed')
+@UseGuards(TenantGuard)
+export class MixedController {
+  @Get('public')
+  publicEndpoint() {
+    // No tenant required
+  }
+
+  @Get('private')
+  @RequireTenant()
+  privateEndpoint() {
+    // Tenant required
+  }
+}
+```
+
+## TenantContextService
+
+Access tenant information from anywhere in your application using AsyncLocalStorage.
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { TenantContextService } from '@pegasusheavy/nestjs-multi-tenant';
+
+@Injectable()
+export class AnyService {
+  constructor(private readonly tenantContext: TenantContextService) {}
+
+  doSomething() {
+    // Get full tenant object
+    const tenant = this.tenantContext.getTenant();
+
+    // Get just the ID
+    const tenantId = this.tenantContext.getTenantId();
+
+    // Check if in tenant context
+    if (this.tenantContext.hasTenant()) {
+      // In tenant context
+    }
+  }
+}
+```
+
+### Running code in a tenant context programmatically
+
+```typescript
+const tenant = { id: 'tenant-123', name: 'Test' };
+
+tenantContext.run(tenant, () => {
+  // All code here has access to the tenant context
+  const id = tenantContext.getTenantId(); // 'tenant-123'
+});
+```
+
+## Route Exclusions
+
+Exclude specific routes from tenant extraction:
+
+```typescript
+MultiTenantModule.forRoot({
+  extractionStrategy: 'header',
+  requireTenant: true,
+  excludeRoutes: [
+    '/health',           // Exact match
+    '/api/public',       // Prefix match
+    /^\/docs/,           // Regex match
+    /^\/api\/v\d+\/public/, // Complex regex
+  ],
+})
+```
+
+## API Reference
+
+### MultiTenantModuleOptions
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `extractionStrategy` | `'header' \| 'subdomain' \| 'path' \| 'query' \| 'custom'` | `'header'` | Strategy for extracting tenant ID |
+| `tenantHeader` | `string` | `'x-tenant-id'` | Header name for header strategy |
+| `tenantQueryParam` | `string` | `'tenantId'` | Query param for query strategy |
+| `tenantPathIndex` | `number` | `0` | Path segment index for path strategy |
+| `customExtractor` | `(req: Request) => string \| null \| Promise<string \| null>` | - | Custom extraction function |
+| `tenantResolver` | `(id: string) => Tenant \| null \| Promise<Tenant \| null>` | - | Resolve full tenant from ID |
+| `requireTenant` | `boolean` | `false` | Throw if tenant not found |
+| `excludeRoutes` | `(string \| RegExp)[]` | `[]` | Routes to skip |
+
+### Tenant Interface
+
+```typescript
+interface Tenant {
+  id: string;
+  name?: string;
+  [key: string]: unknown;
+}
+```
+
+### TenantContextService Methods
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `getTenant()` | `Tenant \| undefined` | Get current tenant |
+| `getTenantId()` | `string \| undefined` | Get current tenant ID |
+| `hasTenant()` | `boolean` | Check if in tenant context |
+| `run(tenant, fn)` | `T` | Execute function in tenant context |
+
+## Testing
+
+The module is fully tested with Vitest. Run tests with:
+
+```bash
+pnpm test          # Run once
+pnpm test:watch    # Watch mode
+pnpm test:coverage # With coverage
+```
+
+## Examples
+
+### Multi-tenant Database Connection
+
+```typescript
+import { Injectable, Scope } from '@nestjs/common';
+import { TenantContextService } from '@pegasusheavy/nestjs-multi-tenant';
+
+@Injectable({ scope: Scope.REQUEST })
+export class TenantDatabaseService {
+  constructor(private readonly tenantContext: TenantContextService) {}
+
+  getConnection() {
+    const tenantId = this.tenantContext.getTenantId();
+    // Return tenant-specific database connection
+    return this.connectionPool.get(tenantId);
+  }
+}
+```
+
+### Tenant-aware Repository
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { TenantContextService } from '@pegasusheavy/nestjs-multi-tenant';
+
+@Injectable()
+export class UsersRepository {
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  findAll() {
+    const tenantId = this.tenantContext.getTenantId();
+    return this.prisma.user.findMany({
+      where: { tenantId },
+    });
+  }
+}
+```
+
+### JWT-based Tenant Extraction
+
+```typescript
+import { JwtService } from '@nestjs/jwt';
+
+MultiTenantModule.forRootAsync({
+  imports: [JwtModule],
+  useFactory: (jwt: JwtService) => ({
+    extractionStrategy: 'custom',
+    customExtractor: (request) => {
+      const token = request.headers.authorization?.replace('Bearer ', '');
+      if (!token) return null;
+
+      try {
+        const payload = jwt.verify(token);
+        return payload.tenantId;
+      } catch {
+        return null;
+      }
+    },
+  }),
+  inject: [JwtService],
+})
+```
+
+## License
+
+MIT © [Pegasus Heavy Industries LLC](https://github.com/PegasusHeavyIndustries)
+
