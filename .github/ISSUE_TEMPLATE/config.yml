@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/pegasusheavy/nestjs-multi-tenant/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions
+  - name: Documentation
+    url: https://github.com/pegasusheavy/nestjs-multi-tenant#readme
+    about: Check the README for documentation
+
