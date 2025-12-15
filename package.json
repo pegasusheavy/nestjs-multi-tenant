@@ -3,7 +3,17 @@
   "version": "0.1.0",
   "description": "A NestJS module for building multi-tenant applications",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -15,17 +25,41 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "prepare": "husky",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run lint && pnpm run test && pnpm run build",
+    "preversion": "pnpm run lint && pnpm run test",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [
     "nestjs",
     "multi-tenant",
     "multitenancy",
     "tenant",
-    "saas"
+    "saas",
+    "nest",
+    "middleware",
+    "module",
+    "typescript"
   ],
-  "author": "Pegasus Heavy Industries LLC",
+  "author": {
+    "name": "Pegasus Heavy Industries LLC",
+    "url": "https://github.com/pegasusheavy"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pegasusheavy/nestjs-multi-tenant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pegasusheavy/nestjs-multi-tenant/issues"
+  },
+  "homepage": "https://github.com/pegasusheavy/nestjs-multi-tenant#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "packageManager": "pnpm@10.20.0",
   "peerDependencies": {
     "@nestjs/common": "^10.0.0 || ^11.0.0",
@@ -64,7 +98,9 @@
     "vitest": "2.1.9"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "lint-staged": {
     "*.ts": [
